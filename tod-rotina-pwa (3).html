@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TO'D'Rotina PWA</title>
+<meta name="theme-color" content="#4CAF50">
+<link id="manifestPlaceholder" rel="manifest">
+<style>
+body{font-family:Arial;margin:0;background:#f4f4f4;text-align:center;overflow:auto;}
+header{background:#4CAF50;color:white;padding:18px;font-size:30px;}
+#tabs{display:flex;flex-wrap:wrap;justify-content:center;background:white;box-shadow:0 2px 5px rgba(0,0,0,0.2);}
+.tab{padding:12px 18px;cursor:pointer;font-size:18px;}
+.tab.active{background:#4CAF50;color:white;border-radius:10px;}
+#toolbar{padding:10px;}
+button{font-size:18px;padding:10px;margin:5px;border-radius:10px;border:none;cursor:pointer;}
+.grid{display:grid;gap:10px;padding:20px;justify-content:center;}
+.cell{background:white;border-radius:15px;box-shadow:0 3px 6px rgba(0,0,0,0.2);display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;overflow:hidden;}
+.cell img{max-width:90%;max-height:70%;}
+.text-input{width:90%;font-size:16px;text-align:center;border:none;}
+.upload{position:absolute;bottom:4px;right:4px;}
+.completed{background:#b8f5b8;}
+.config{margin-top:10px;font-size:16px;}
+.install-btn{background:#4CAF50;color:white;padding:10px 20px;border-radius:10px;margin-top:10px;display:none;}
+.modal-overlay{position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);z-index:999999;display:none;align-items:center;justify-content:center;}
+.modal-box{background:white;padding:20px;border-radius:12px;width:80%;max-width:300px;}
+</style>
+</head>
+<body>
+<header>TO'D'Rotina</header>
+<button id="installBtn" class="install-btn">📱 Instalar Aplicativo</button>
+
+<div id="passwordModal" class="modal-overlay">
+  <div class="modal-box">
+    <h3>Senha do Responsável</h3>
+    <p id="passwordMessage"></p>
+    <input type="password" id="passwordInput" placeholder="Digite a senha" style="width:100%;padding:10px;border-radius:8px;">
+    <button onclick="confirmPassword()" style="margin-top:10px;background:#4CAF50;color:white;width:100%;">Confirmar</button>
+    <button onclick="recoverPasswordPrompt()" style="margin-top:10px;background:#ff9800;width:100%;">Esqueci a senha</button>
+  </div>
+</div>
+
+<div id="recoverModal" class="modal-overlay">
+  <div class="modal-box">
+    <h3>Recuperar Senha</h3>
+    <p id="recoverQuestion"></p>
+    <input id="recoverAnswerInput" placeholder="Resposta secreta" style="width:100%;padding:10px;border-radius:8px;">
+    <button onclick="checkRecoverAnswer()" style="margin-top:10px;background:#4CAF50;color:white;width:100%;">Confirmar</button>
+  </div>
+</div>
+
+<div id="secretQuestionModal" class="modal-overlay">
+  <div class="modal-box">
+    <h3>Criar Pergunta Secreta</h3>
+    <input id="secretQuestionInput" placeholder="Pergunta" style="width:100%;padding:10px;border-radius:8px;">
+    <input id="secretAnswerInput" placeholder="Resposta" style="width:100%;padding:10px;border-radius:8px;margin-top:10px;">
+    <button onclick="saveSecretQuestion()" style="margin-top:10px;background:#4CAF50;color:white;width:100%;">Salvar</button>
+  </div>
+</div>
+
+<div id="tabs">
+<div class="tab active" onclick="openTab('sala',this)">🏠 Sala</div>
+<div class="tab" onclick="openTab('cozinha',this)">🍽 Cozinha</div>
+<div class="tab" onclick="openTab('quarto',this)">🛏 Quarto</div>
+<div class="tab" onclick="openTab('banheiro',this)">🚿 Banheiro</div>
+<div class="tab" onclick="openTab('servico',this)">🧺 Área de serviço</div>
+<div class="tab" onclick="openTab('patio',this)">🌳 Pátio</div>
+<div class="tab" onclick="openTab('clinica',this)">🏥 Clínica</div>
+</div>
+
+<div id="toolbar">
+<button id="lockBtn">🔒 Modo Criança</button>
+<button onclick="fullscreen()">📺 Tela Cheia</button>
+<div class="config">
+Linhas: <input type="number" id="rows" value="3" min="1" max="100">
+Colunas: <input type="number" id="cols" value="4" min="1" max="100">
+<button onclick="applyGrid()">Aplicar Grade</button>
+</div>
+</div>
+
+<div id="content"></div>
+
+<script>
+/* PWA */
+(function(){
+const manifest={"name":"TO'D'Rotina","short_name":"Rotina","start_url":"./","display":"standalone","background_color":"#f4f4f4","theme_color":"#4CAF50","icons":[]};
+const mURL=URL.createObjectURL(new Blob([JSON.stringify(manifest)],{type:"application/json"}));
+document.getElementById("manifestPlaceholder").href=mURL;
+const sw=`const C="c1";self.addEventListener("install",e=>e.waitUntil(caches.open(C).then(c=>c.addAll(["./"]))));
+self.addEventListener("fetch",e=>e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request))));`;
+navigator.serviceWorker?.register(URL.createObjectURL(new Blob([sw],{type:"text/javascript"})));
+})();
+</script>
+
+<script>
+let locked=true;
+let ambienteAtual="sala";
+
+function lockScreen(){document.body.style.overflow="hidden";}
+function unlockScreen(){document.body.style.overflow="auto";}
+
+function getStorageKey(){return "rotina_"+ambienteAtual;}
+
+function loadData(){let d=localStorage.getItem(getStorageKey());return d?JSON.parse(d):null;}
+function saveData(d){localStorage.setItem(getStorageKey(),JSON.stringify(d));}
+
+function openTab(n,el){
+ambienteAtual=n;
+document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
+el.classList.add("active");
+let d=loadData();
+if(d){rows.value=d.rows;cols.value=d.cols;}
+renderGrid();
+}
+
+function applyGrid(){
+saveData({rows:parseInt(rows.value),cols:parseInt(cols.value),cells:[]});
+renderGrid();
+}
+
+function renderGrid(){
+let d=loadData();
+if(!d){d={rows:parseInt(rows.value),cols:parseInt(cols.value),cells:[]};saveData(d);}
+content.innerHTML="";
+let grid=document.createElement("div");
+grid.className="grid";
+let size=170;if(d.cols>10)size=120;if(d.cols>20)size=90;if(d.cols>40)size=60;
+grid.style.gridTemplateColumns=`repeat(${d.cols},${size}px)`;
+for(let i=0;i<d.rows*d.cols;i++){
+let c=d.cells[i]||{};
+let cell=document.createElement("div");cell.className="cell";cell.style.width=size+"px";cell.style.height=size+"px";
+let input=document.createElement("input");input.className="text-input";input.value=c.text||"atividade";input.disabled=locked;
+input.oninput=e=>{d.cells[i]={...d.cells[i],text:e.target.value};saveData(d);};
+cell.dataset.text=input.value;
+cell.appendChild(input);
+if(c.img){let img=document.createElement("img");img.src=c.img;cell.prepend(img);}
+let upload=document.createElement("button");upload.innerText="📷";upload.className="upload";
+upload.onclick=e=>{
+e.stopPropagation();if(locked)return;
+let f=document.createElement("input");f.type="file";
+f.onchange=ev=>{
+let r=new FileReader();
+r.onload=v=>{
+let img=cell.querySelector("img");if(!img){img=document.createElement("img");cell.prepend(img);}
+img.src=v.target.result;d.cells[i]={...d.cells[i],img:v.target.result};saveData(d);
+};
+r.readAsDataURL(ev.target.files[0]);
+};
+f.click();
+};
+cell.appendChild(upload);
+cell.onclick=e=>{if(e.target===input)return;speechSynthesis.speak(new SpeechSynthesisUtterance(cell.dataset.text));cell.classList.toggle("completed");};
+grid.appendChild(cell);
+}
+content.appendChild(grid);
+}
+
+lockBtn.onclick=()=>{locked?openPasswordModal():(locked=true,lockBtn.innerText="🔒 Modo Criança",renderGrid());};
+
+function fullscreen(){document.documentElement.requestFullscreen();}
+renderGrid();
+
+/* SENHAS */
+function showModal(id){lockScreen();document.getElementById(id).style.display="flex";}
+function hideModal(id){unlockScreen();document.getElementById(id).style.display="none";}
+
+function openPasswordModal(){
+lockScreen();
+let s=localStorage.getItem("rotina_password");
+passwordMessage.innerText=s?"Digite a senha:":"Crie uma senha para o responsável:";
+passwordModal.style.display="flex";
+passwordInput.value="";
+}
+
+function confirmPassword(){
+let saved=localStorage.getItem("rotina_password"),typed=passwordInput.value;
+if(!saved){
+ if(typed.length<4){alert("A senha deve ter 4 dígitos ou mais.");return;}
+ localStorage.setItem("rotina_password",typed);
+ hideModal("passwordModal");unlock();return;
+}
+if(typed===saved){hideModal("passwordModal");unlock();}
+else alert("Senha incorreta!");
+}
+
+function unlock(){
+locked=false;lockBtn.innerText="🔓 Modo Terapeuta";renderGrid();
+}
+
+/* RECUPERAÇÃO */
+function recoverPasswordPrompt(){
+let q=localStorage.getItem("rotina_secret_question"),a=localStorage.getItem("rotina_secret_answer");
+if(!q||!a){secretQuestionModal.style.display="flex";lockScreen();return;}
+recoverQuestion.innerText=q;
+recoverModal.style.display="flex";lockScreen();
+}
+
+function checkRecoverAnswer(){
+let a=localStorage.getItem("rotina_secret_answer");
+if(recoverAnswerInput.value.trim().toLowerCase()===a.toLowerCase()){
+alert("Correto! Crie uma nova senha.");localStorage.removeItem("rotina_password");
+hideModal("recoverModal");openPasswordModal();
+}else alert("Resposta incorreta!");
+}
+
+function saveSecretQuestion(){
+let q=secretQuestionInput.value.trim(),a=secretAnswerInput.value.trim();
+if(q.length<3||a.length<1){alert("Preencha tudo.");return;}
+localStorage.setItem("rotina_secret_question",q);
+localStorage.setItem("rotina_secret_answer",a);
+hideModal("secretQuestionModal");openPasswordModal();
+}
+
+/* INSTALAÇÃO */
+let deferredPrompt;
+installBtn.style.display="none";
+window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();deferredPrompt=e;installBtn.style.display="inline-block";});
+installBtn.onclick=async()=>{installBtn.style.display="none";deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;};
+</script>
+</body>
+</html>
